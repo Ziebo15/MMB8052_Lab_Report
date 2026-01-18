@@ -1,0 +1,679 @@
+############################################################
+# Practical 08 — Data setup + tximport (Salmon quant.sf)
+############################################################
+
+# -------------------------------
+# 1) Download / unzip input data
+# -------------------------------
+# Download counts.zip:
+# https://github.com/sjcockell/mmb8052/raw/main/practicals/practical_08/results/counts.zip
+# Unzip so you have a folder called: counts/
+
+# -------------------------------
+# 2) Install / load required packages
+# -------------------------------
+# Need to have following packages
+install.packages('BiocManager')
+library(BiocManager)
+install(c('tximport', 'DESeq2', 'biomaRt', 'pheatmap'))
+install.packages("ggrepel")
+BiocManager::install(c("clusterProfiler", "org.Mm.eg.db"))
+
+library(ggrepel)
+library(tximport)
+library(DESeq2)
+library(biomaRt)
+library(pheatmap)
+library(tidyverse)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+
+install.packages ("viridis")
+library(viridis)
+
+# -------------------------------
+# 3) Working directory
+# -------------------------------
+# Set this as working directory (so "counts/" is found)
+
+# -------------------------------
+# 4) Import metadata + build file paths
+# -------------------------------
+sample_table = read_csv('https://raw.githubusercontent.com/sjcockell/mmb8052/main/practicals/practical_08/data/sample_table.csv')
+files = pull(sample_table, Run)
+files = paste0('counts/', files, '/quant.sf')
+names(files) = pull(sample_table, Run)
+
+# -------------------------------
+# 5) Transcript-to-gene mapping
+# -------------------------------
+gene_map = read_csv('https://github.com/sjcockell/mmb8052/raw/main/practicals/practical_08/extdata/gene_map.csv')
+
+# -------------------------------
+# 6) Import Salmon quantifications with tximport
+# -------------------------------
+txi = tximport(files, 
+               type="salmon",
+               tx2gene=gene_map,
+               ignoreTxVersion=TRUE)
+
+
+#DESeq Dispersion Equilibrium
+dds = DESeqDataSetFromTximport(txi, colData = sample_table, design = ~ Group)
+dds = estimateSizeFactors(dds)
+dds = estimateDispersions(dds)
+dds = nbinomWaldTest(dds)
+
+
+############################################################
+# DESeq2 — Dispersion estimation + custom dispersion plot
+############################################################
+
+# -------------------------------
+# 1) Create DESeq2 dataset + estimate dispersions
+# -------------------------------
+dds = DESeqDataSetFromTximport(txi, colData = sample_table, design = ~ Group)
+dds = estimateSizeFactors(dds)
+dds = estimateDispersions(dds)
+dds = nbinomWaldTest(dds)
+
+# -------------------------------
+# 2) Custom dispersion plot function
+# -------------------------------
+plotDispEsts_custom <- function(dds) {
+  
+  stopifnot(requireNamespace("DESeq2"))
+  
+  mc <- S4Vectors::mcols(dds)
+  
+  baseMean <- if ("baseMean" %in% names(mc)) mc$baseMean else
+    rowMeans(DESeq2::counts(dds, normalized = TRUE))
+  
+  dispGeneEst <- mc$dispGeneEst
+  dispFit     <- mc$dispFit
+  dispFinal   <- DESeq2::dispersions(dds)
+  
+  keep <- is.finite(baseMean) & baseMean > 0 &
+    is.finite(dispGeneEst) & dispGeneEst > 0 &
+    is.finite(dispFit) & dispFit > 0 &
+    is.finite(dispFinal) & dispFinal > 0
+  
+  same_as_gene <- keep & (abs(log10(dispFinal) - log10(dispGeneEst)) < 1e-12)
+  above_fit    <- keep & (dispGeneEst > dispFit)
+  outlier_like <- same_as_gene & above_fit
+  
+  ## 1) gene-wise estimates (purple-red, BACK)
+  plot(
+    baseMean[keep], dispGeneEst[keep],
+    log  = "xy",
+    pch  = 20,
+    cex  = 0.5,
+    col  = "#A92E5E",
+    xlab = "Mean of Normalized Counts",
+    ylab = "Dispersion",
+    main = "Gene-wise Dispersion Estimates for GSE116583"
+  )
+  
+  ## 2) final dispersions (yellow-orange)
+  points(
+    baseMean[keep], dispFinal[keep],
+    pch = 20,
+    cex = 0.7,
+    col = "#F9CB35"
+  )
+  
+  ## 3) outlier-like: large outer points
+  points(
+    baseMean[outlier_like], dispFinal[outlier_like],
+    pch = 20,
+    cex = 1.0,
+    col = "#F9CB35"
+  )
+  
+  ## 4) outlier-like: small inner points
+  points(
+    baseMean[outlier_like], dispGeneEst[outlier_like],
+    pch = 20,
+    cex = 0.3,
+    col = "#A92E5E"
+  )
+  
+  ## 5) fitted dispersion curve (front)
+  ord <- order(baseMean[keep])
+  lines(
+    baseMean[keep][ord], dispFit[keep][ord],
+    col = "black",
+    lwd = 2
+  )
+  
+  # -------------------------------
+  # Legend (Key)
+  # -------------------------------
+  legend(
+    "bottomright",
+    title  = "Key",
+    legend = c("Gene-est", "Fitted", "Final"),
+    col    = c("#A92E5E", "black", "#F9CB35"),
+    pch    = c(20, NA, 20),
+    lty    = c(NA, 1, NA),
+    lwd    = c(NA, 2, NA),
+    pt.cex = 1.4,
+    bty    = "o",
+    bg     = "white"
+  )
+}
+
+# -------------------------------
+# 3) Run the custom plot
+# -------------------------------
+plotDispEsts_custom(dds)
+
+
+############################################################
+# PCA (rlog-transformed counts)
+############################################################
+
+
+# -------------------------------
+# 1) rlog transformation + PCA plot (colour by experimental group)
+# -------------------------------
+
+# rlog transformation
+rld = rlog(dds)
+
+# PCA plot
+plotPCA(rld, intgroup = "Group") +
+  ggtitle("PCA Plot of GSE116583 Gene Expression") +
+  scale_colour_discrete(
+    name = "Group",
+    labels = c(
+      Allo24h = "Allo24h",
+      Allo2h  = "Allo2h",
+      Naive   = "Naive"
+    )
+  ) +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.line  = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    panel.grid.major = element_line(color = "grey85"),
+    panel.grid.minor = element_line(color = "grey90"),
+    panel.border = element_blank()
+  )
+
+
+############################################################
+# Sample-to-sample distance heatmap
+############################################################
+
+# -------------------------------
+# Heatmap settings
+# - Distances: Euclidean sample-to-sample distances
+# - Clustering: uses the same distance object for rows and columns
+# - Annotation: colours match the PCA plot exactly (ggplot2 default palette)
+# - Styling: viridis colour scale + maroon grid borders
+# -------------------------------
+
+# -------------------------------
+# 1) Compute sample-to-sample distances (Euclidean)
+# -------------------------------
+sample_distance = dist(t(assay(rld)), method = "euclidean")
+sample_distance_matrix = as.matrix(sample_distance)
+
+# -------------------------------
+# 2) Column annotation (Group)
+# -------------------------------
+heatmap_annotation = data.frame(
+  Group = colData(dds)[, c("Group")],   # Capitalised label
+  row.names = rownames(colData(dds))
+)
+
+# -------------------------------
+# 3) Heatmap
+# -------------------------------
+pheatmap(
+  sample_distance_matrix,
+  clustering_distance_rows = sample_distance,
+  clustering_distance_cols = sample_distance,
+  annotation_col = heatmap_annotation,
+  annotation_colors = list(
+    Group = c(
+      Allo24h = "#F8766D",
+      Allo2h  = "#00BA38",
+      Naive   = "#619CFF"
+    )
+  ),
+  color = viridis(100, option = "B"),
+  border_color = "maroon",
+  main = "Sample Distance Heatmap for GSE116583"
+)
+
+
+############################################################
+# Differential expression analysis: Volcano plots
+############################################################
+
+
+# -------------------------------
+# Volcano plot overview
+# - Comparisons: Allo2h vs Naive, Allo24h vs Naive
+# - Data source: DESeq2 Wald test results
+# - x-axis: log2 fold change (treatment / control)
+# - y-axis: −log10 adjusted p-value (Benjamini–Hochberg)
+# - Thresholds: |log2FC| ≥ 1, padj ≤ 0.05
+# - Purpose: visualise magnitude and significance of
+#   differential gene expression between conditions
+# -------------------------------
+
+# ============================================================
+# 1) Helper function: Create a volcano-ready table from DESeq2 results()
+# ============================================================
+make_volcano_table <- function(dds, contrast_vec) {
+  results(dds, contrast = contrast_vec) %>%
+    as.data.frame() %>%
+    rownames_to_column("ensembl_gene_id") %>%
+    filter(!is.na(padj), !is.na(log2FoldChange)) %>%
+    mutate(
+      logPVal = -log10(padj),
+      absFC = abs(log2FoldChange),
+      significant = padj <= 0.05,
+      category = if_else(
+        significant,
+        if_else(absFC >= 1, "p-Value and log2FC", "p-Value only"),
+        "Not Significant"
+      )
+    )
+}
+
+# ============================================================
+# 2) Generate volcano tables (DESeq2 contrasts)
+# ============================================================
+allo2h_vs_naive  <- make_volcano_table(dds, c("Group", "Allo2h",  "Naive"))
+allo24h_vs_naive <- make_volcano_table(dds, c("Group", "Allo24h", "Naive"))
+
+# ============================================================
+# 3) Add gene names (biomaRt, mouse, Ensembl v108)
+# ============================================================
+ensembl108 <- useEnsembl(biomart = "ensembl", version = 108)
+ensembl108 <- useDataset("mmusculus_gene_ensembl", mart = ensembl108)
+
+annotation <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters    = "ensembl_gene_id",
+  values     = unique(c(
+    allo2h_vs_naive$ensembl_gene_id,
+    allo24h_vs_naive$ensembl_gene_id
+  )),
+  mart = ensembl108
+)
+
+allo2h_vs_naive  <- left_join(allo2h_vs_naive,  annotation, by = "ensembl_gene_id")
+allo24h_vs_naive <- left_join(allo24h_vs_naive, annotation, by = "ensembl_gene_id")
+
+# ============================================================
+# 4) Select top genes for labelling
+# ============================================================
+top_genes_allo2h <- allo2h_vs_naive %>%
+  filter(category == "p-Value and log2FC",
+         !is.na(external_gene_name),
+         external_gene_name != "") %>%
+  mutate(extremeness = abs(log2FoldChange) + logPVal) %>%
+  arrange(desc(extremeness)) %>%
+  slice_head(n = 10)
+
+top_genes_allo24h <- allo24h_vs_naive %>%
+  filter(category == "p-Value and log2FC",
+         !is.na(external_gene_name),
+         external_gene_name != "") %>%
+  mutate(extremeness = abs(log2FoldChange) + logPVal) %>%
+  arrange(desc(extremeness)) %>%
+  slice_head(n = 10)
+
+# ============================================================
+# 5) Colour palette
+# ============================================================
+volcano_cols <- c(
+  "p-Value and log2FC" = "#A92E5E",
+  "p-Value only"      = "#F9CB35",
+  "Not Significant"   = "grey"
+)
+
+# ============================================================
+# 6) Volcano Plot: Allo2h vs Naive
+# ============================================================
+ggplot(allo2h_vs_naive, aes(log2FoldChange, logPVal, colour = category)) +
+  geom_point(size = 1) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey35") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", colour = "grey35") +
+  ggrepel::geom_text_repel(
+    data = top_genes_allo2h,
+    aes(label = external_gene_name),
+    size = 3,
+    colour = "black",
+    min.segment.length = 0,
+    segment.color = "grey40",
+    segment.size = 0.5,
+    segment.alpha = 0.8,
+    point.padding = 0.4,
+    box.padding = 0.6,
+    max.overlaps = 10
+  ) +
+  scale_color_manual(
+    name = "Significance category",
+    values = volcano_cols
+  ) +
+  guides(
+    colour = guide_legend(override.aes = list(size = 4))
+  ) +
+  ggtitle("Volcano Plot: Allo2h vs Naive") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.title = element_text(face = "bold"),
+    legend.position = c(0.98, 0.98),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", colour = "black"),
+    legend.box.background = element_rect(fill = "white", colour = "black"),
+    
+    # black axis lines only (no full border)
+    axis.line = element_line(colour = "black"),
+    
+    # extra spacing between axis and axis titles
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+
+# ============================================================
+# 7) Volcano Plot: Allo24h vs Naive
+# ============================================================
+ggplot(allo24h_vs_naive, aes(log2FoldChange, logPVal, colour = category)) +
+  geom_point(size = 1) +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", colour = "grey35") +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", colour = "grey35") +
+  ggrepel::geom_text_repel(
+    data = top_genes_allo24h,
+    aes(label = external_gene_name),
+    size = 3,
+    colour = "black",
+    min.segment.length = 0,
+    segment.color = "grey40",
+    segment.size = 0.5,
+    segment.alpha = 0.8,
+    point.padding = 0.4,
+    box.padding = 0.6,
+    max.overlaps = 10
+  ) +
+  scale_color_manual(
+    name = "Significance category",
+    values = volcano_cols
+  ) +
+  guides(
+    colour = guide_legend(override.aes = list(size = 4))
+  ) +
+  ggtitle("Volcano Plot: Allo24h vs Naive") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.title = element_text(face = "bold"),
+    legend.position = c(0.98, 0.98),
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = "white", colour = "black"),
+    legend.box.background = element_rect(fill = "white", colour = "black"),
+    
+    # black axis lines only (no full border)
+    axis.line = element_line(colour = "black"),
+    
+    # extra spacing between axis and axis titles
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+
+
+############################################################
+# Practical 09 — Downstream gene list analysis (extension of Practical 08)
+############################################################
+
+# -------------------------------
+# Practical context
+# - Continues from Practical 08 (DESeq2 analysis already completed)
+# - Dataset: GSE116583 (mouse; Naive, Allo2h, Allo24h)
+#
+# Main aims
+# 1) Visualise expression patterns of top DE genes using heatmaps
+#    - e.g. top 250 genes by |log2FC| with padj < 0.05 (using rlog assay)
+# 2) Add functional interpretation using enrichment analysis
+#    - Gene Ontology (BP / MF / CC) over-representation (clusterProfiler)
+# 3) Explore pathway-level changes with gene set enrichment (GSEA)
+#    - e.g. MSigDB Hallmark gene sets
+# -------------------------------
+
+
+############################################################
+# Heatmaps of top 250 DE genes (Allo2h vs Naive, Allo24h vs Naive)
+############################################################
+
+# -------------------------------
+# 0) Gene annotation (required for converting Ensembl IDs -> gene symbols)
+# -------------------------------
+ensembl108 <- useEnsembl(biomart = "ensembl", version = 108)
+ensembl108 <- useDataset("mmusculus_gene_ensembl", mart = ensembl108)
+
+annotation <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters    = "ensembl_gene_id",
+  values     = rownames(assay(rld)),
+  mart       = ensembl108
+)
+
+annot_results <- annotation
+
+
+# -------------------------------
+# 1) Helper: build a top-250 heatmap matrix from a results table
+# -------------------------------
+make_top250_heatmap_matrix <- function(filtered_results, rld, annot_results) {
+  
+  filtered_results <- filtered_results %>%
+    mutate(absLog2FC = abs(log2FoldChange))
+  
+  top250 <- filtered_results %>%
+    filter(padj < 0.05) %>%
+    arrange(desc(absLog2FC)) %>%
+    slice(1:250)
+  
+  mat_top250 <- assay(rld)[ top250$ensembl_gene_id , ]
+  
+  gene_symbols <- annot_results %>%
+    dplyr::filter(ensembl_gene_id %in% rownames(mat_top250)) %>%
+    dplyr::select(ensembl_gene_id, external_gene_name)
+  
+  gene_symbols <- gene_symbols[match(rownames(mat_top250), gene_symbols$ensembl_gene_id), ]
+  rownames(mat_top250) <- gene_symbols$external_gene_name
+  
+  return(mat_top250)
+}
+
+
+# -------------------------------
+# 2) Column annotation (Group)
+# -------------------------------
+heatmap_annotation <- data.frame(
+  Group = colData(dds)$Group,
+  row.names = colnames(assay(rld))
+)
+
+# -------------------------------
+# 2b) Force group colours to match PCA exactly
+# -------------------------------
+group_colours <- list(
+  Group = c(
+    Allo24h = "#F8766D",
+    Allo2h  = "#00BA38",
+    Naive   = "#619CFF"
+  )
+)
+
+
+# -------------------------------
+# 3) Heatmap: Top 250 genes (Allo2h vs Naive)
+# -------------------------------
+mat_top250_allo2h <- make_top250_heatmap_matrix(
+  filtered_results = allo2h_vs_naive,
+  rld = rld,
+  annot_results = annot_results
+)
+
+pheatmap(
+  mat_top250_allo2h,
+  scale = "row",
+  annotation_col = heatmap_annotation,
+  annotation_colors = group_colours,
+  show_rownames = TRUE,
+  fontsize_row = 2,
+  color = viridis(100, option = "B"),
+  main = "Top 250 Differentially Expressed Genes Identified at 2h Post-Reperfusion"
+)
+
+
+# -------------------------------
+# 4) Heatmap: Top 250 genes (Allo24h vs Naive)
+# -------------------------------
+mat_top250_allo24h <- make_top250_heatmap_matrix(
+  filtered_results = allo24h_vs_naive,
+  rld = rld,
+  annot_results = annot_results
+)
+
+pheatmap(
+  mat_top250_allo24h,
+  scale = "row",
+  annotation_col = heatmap_annotation,
+  annotation_colors = group_colours,
+  show_rownames = TRUE,
+  fontsize_row = 2,
+  color = viridis(100, option = "B"),
+  main = "Top 250 Differentially Expressed Genes Identified at 24h Post-Reperfusion"
+)
+
+
+############################################################
+# GO Biological Process enrichment + dotplots
+############################################################
+
+
+# -------------------------------
+# 1) Helper: run enrichGO for a DESeq2 contrast
+# -------------------------------
+run_go_enrichment <- function(dds, contrast_vec, ont_branch = "BP") {
+  
+  results_table  <- results(dds, contrast = contrast_vec)
+  results_tibble <- as_tibble(results_table, rownames = "ensembl_gene_id")
+  
+  filtered_results <- filter(results_tibble, complete.cases(results_tibble))
+  
+  significant_results <- filter(
+    filtered_results,
+    abs(log2FoldChange) > 1,
+    padj < 0.05
+  )
+  
+  significant_genes <- pull(significant_results, ensembl_gene_id)
+  universe_genes    <- pull(filtered_results, ensembl_gene_id)
+  
+  enrichGO(
+    gene          = significant_genes,
+    universe      = universe_genes,
+    OrgDb         = org.Mm.eg.db,
+    keyType       = "ENSEMBL",
+    ont           = ont_branch,      # "BP", "CC", "MF"
+    pAdjustMethod = "BH",
+    pvalueCutoff  = 0.01,
+    qvalueCutoff  = 0.05
+  )
+}
+
+# -------------------------------
+# 2) Run GO enrichment for BOTH contrasts
+# -------------------------------
+ego_allo2h  <- run_go_enrichment(dds, c("Group", "Allo2h",  "Naive"), ont_branch = "BP")
+ego_allo24h <- run_go_enrichment(dds, c("Group", "Allo24h", "Naive"), ont_branch = "BP")
+
+# -------------------------------
+# 3) Helper: consistent dotplot styling + FIXED p.adjust scales
+# -------------------------------
+style_go_dotplot <- function(p, plot_title, pmin, pmax) {
+  
+  ylabels <- function(x) stringr::str_to_sentence(stringr::str_wrap(x, width = 35))
+  
+  p +
+    ggtitle(plot_title) +
+    scale_y_discrete(labels = ylabels) +
+    
+    # Your 2-colour gradient (yellow -> purple) with fixed limits
+    scale_fill_gradient(
+      low    = "#FCA409",
+      high   = "#9D2964",
+      limits = c(pmin, pmax),
+      oob    = scales::squish
+    ) +
+    
+    labs(
+      x = "Gene Ratio",
+      y = "Enriched Biological Processes",
+      fill = "Adjusted p-value",
+      size = "Gene Count"
+    ) +
+    
+    theme_bw() +
+    theme(
+      panel.grid.major = element_line(colour = "grey85"),
+      panel.grid.minor = element_blank(),
+      
+      # Black border all around the plot
+      panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8),
+      
+      # Black axis lines only (not an extra border around keys)
+      axis.line = element_line(colour = "black", linewidth = 0.6),
+      
+      # Smaller y labels + avoid overlap via wrapping above
+      axis.text.y = element_text(size = 8),
+      
+      # Space between axis + title
+      axis.title.y = element_text(margin = margin(r = 10), face = "bold"),
+      axis.title.x = element_text(margin = margin(t = 10), face = "bold"),
+      
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+      
+      # No border around legends/keys
+      legend.background = element_blank(),
+      legend.box.background = element_blank()
+    ) +
+    
+    # Keep legend direction consistent (stops “flipping”)
+    guides(fill = guide_colourbar(reverse = FALSE))
+}
+
+# -------------------------------
+# 4) Build dotplots (top categories) with your requested fixed scales
+# -------------------------------
+p_allo2h <- dotplot(ego_allo2h, showCategory = 15) %>%
+  style_go_dotplot(
+    plot_title = "GO Biological Process Enrichment of Differentially Expressed Genes 2h Post-Reperfusion",
+    pmin = 3e-05,
+    pmax = 1e-04
+  )
+
+p_allo24h <- dotplot(ego_allo24h, showCategory = 15) %>%
+  style_go_dotplot(
+    plot_title = "GO Biological Process Enrichment of Differentially Expressed Genes 24h Post-Reperfusion",
+    pmin = 1e-36,
+    pmax = 1e-21
+  )
+
+# -------------------------------
+# 5) Print plots
+# -------------------------------
+p_allo2h
+p_allo24h
+
