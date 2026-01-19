@@ -9,9 +9,13 @@
 
 ## Overview
 
-This repository contains the code used for Assignment 2 – RNA-seq Lab Report as part of the MMB8052 Bioinformatics for Biomedical Scientists module. The analysis investigates transcriptional changes following reperfusion by comparing RNA-seq profiles at 2 hours and 24 hours post-treatment against naïve control cells.
+This repository contains the code used for Assignment 2 - Lab Report as part of the MMB8052 Bioinformatics for Biomedical Scientists module.
+ The analysis investigates transcriptional changes following reperfusion by comparing RNA-seq profiles at 2 hours and 24 hours post-treatment against naïve control cells.
 
-The workflow performs differential gene expression analysis using DESeq2, with transcript-level quantification imported using tximport. The analysis includes exploratory data analysis, statistical testing, and biological interpretation through multiple visualisation approaches.
+The workflow performs differential gene expression analysis using DESeq2, with transcript-level quantification imported using tximport.
+ The analysis includes exploratory data analysis, statistical testing, and biological interpretation through multiple visualisation approaches.
+
+Overall, this script will produce the 9 visualisations included in the Lab Report submission.
 
 ---
 
@@ -42,9 +46,10 @@ Differential expression analysis is performed using DESeq2 for the following com
 - 2 hours vs naïve control cells  
 - 24 hours vs naïve control cells  
 
-Data quality and biological signal are explored using dispersion plots and principal component analysis (PCA). Differentially expressed genes are visualised using heatmaps and volcano plots, and Gene Ontology (GO) enrichment analysis is performed to support biological interpretation of transcriptional changes.
+Data quality and biological signal are explored using dispersion plots and principal component analysis (PCA). 
+Differentially expressed genes are visualised using heatmaps and volcano plots, and Gene Ontology (GO) enrichment analysis is performed to support biological interpretation of transcriptional changes.
 
-All figures are generated interactively within R and displayed in the R plotting window. Figures are not automatically saved to files.
+All figures are generated interactively within R and displayed in the R plotting window. Figures are not automatically saved to files and must be saved manually.
 
 ---
 
@@ -100,5 +105,6 @@ README.md – Project documentation
 
 ## Notes
 
-Large data files are excluded from version control to avoid unnecessary upload of raw sequencing data. All analyses are fully reproducible using the provided script and publicly available input files.
+Large data files are excluded from version control to avoid unnecessary upload of raw sequencing data.
+ All analyses are fully reproducible using the provided script and publicly available input files.
 
