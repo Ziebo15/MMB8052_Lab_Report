@@ -63,22 +63,21 @@ Run via RStudio
 ## Required R Packages
 
 CRAN packages:
-
-install.packages("tidyverse")  
+`install.packages("tidyverse")  
 install.packages("ggrepel")  
 install.packages("viridis")  
-install.packages("BiocManager")  
+install.packages("BiocManager")` 
 
 Bioconductor packages:
 
-BiocManager::install(c(
+`BiocManager::install(c(
   "tximport",
   "DESeq2",
   "biomaRt",
   "pheatmap",
   "clusterProfiler",
   "org.Mm.eg.db"
-))
+))`
 
 ---
 
