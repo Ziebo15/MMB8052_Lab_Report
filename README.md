@@ -63,10 +63,11 @@ Run via RStudio
 ## Required R Packages
 
 CRAN packages:
-`install.packages("tidyverse")  
-install.packages("ggrepel")  
-install.packages("viridis")  
-install.packages("BiocManager")` 
+
+'install.packages("tidyverse")'
+'install.packages("ggrepel")'
+'install.packages("viridis")'
+'install.packages("BiocManager")'
 
 Bioconductor packages:
 
