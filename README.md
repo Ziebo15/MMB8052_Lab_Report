@@ -69,6 +69,7 @@ CRAN packages:
 'install.packages("ggrepel")'
 'install.packages("viridis")'
 'install.packages("BiocManager")'
+```
 
 Bioconductor packages:
 
