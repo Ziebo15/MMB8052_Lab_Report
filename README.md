@@ -64,6 +64,7 @@ Run via RStudio
 
 CRAN packages:
 
+```r
 'install.packages("tidyverse")'
 'install.packages("ggrepel")'
 'install.packages("viridis")'
