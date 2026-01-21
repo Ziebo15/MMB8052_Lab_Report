@@ -55,8 +55,20 @@ All figures are generated interactively within R and displayed in the R plotting
 
 ## Software and Environment
 
-R version 4.4.1  
-Run via RStudio  
+- **R**: version 4.4.1  
+- **RStudio**: used as the development environment  
+
+### R Packages
+
+- tidyverse (v2.0.0)  
+- ggrepel (v0.9.6)  
+- BiocManager (v1.30.27)  
+- tximport (v1.34.0)  
+- DESeq2 (v1.46.0)  
+- biomaRt (v2.62.1)  
+- pheatmap (v1.0.13)  
+- clusterProfiler (v4.18.4)  
+- org.Mm.eg.db (v3.22.0)
 
 ---
 
